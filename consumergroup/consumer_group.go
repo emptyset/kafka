@@ -3,11 +3,12 @@ package consumergroup
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/wvanbergen/kazoo-go"
+	"github.com/emptyset/kazoo-go"
 )
 
 var (
@@ -311,7 +312,22 @@ func (cg *ConsumerGroup) topicConsumer(topic string, messages chan<- *sarama.Con
 	cg.Logf("%s :: Started topic consumer\n", topic)
 
 	// Fetch a list of partition IDs
-	partitions, err := cg.kazoo.Topic(topic).Partitions()
+	retries := 10
+	wait := time.Duration(2)
+
+	var partitions kazoo.PartitionList
+	var err error
+	for try := 1; try <= retries; try++ {
+		log.Printf("attempt %d at invoking cg.kazoo.Topic(%s).Partitions()", try, topic)
+		partitions, err = cg.kazoo.Topic(topic).Partitions()
+		if err != nil {
+			log.Printf("error when invoking cg.kazoo.Topic(%s) at try %d: %s\n", topic, try, err.Error())
+			time.Sleep(time.Second * wait)
+		} else {
+			break
+		}
+	}
+
 	if err != nil {
 		cg.Logf("%s :: FAILED to get list of partitions: %s\n", topic, err)
 		cg.errors <- &sarama.ConsumerError{
@@ -319,7 +335,6 @@ func (cg *ConsumerGroup) topicConsumer(topic string, messages chan<- *sarama.Con
 			Partition: -1,
 			Err:       err,
 		}
-		return
 	}
 
 	partitionLeaders, err := retrievePartitionLeaders(partitions)

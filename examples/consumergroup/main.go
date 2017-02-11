@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/wvanbergen/kafka/consumergroup"
-	"github.com/wvanbergen/kazoo-go"
+	"github.com/emptyset/kafka/consumergroup"
+	"github.com/emptyset/kazoo-go"
 )
 
 const (
