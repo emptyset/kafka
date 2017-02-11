@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/wvanbergen/kazoo-go"
+	"github.com/emptyset/kazoo-go"
 )
 
 var (
