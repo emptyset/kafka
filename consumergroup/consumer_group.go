@@ -3,6 +3,7 @@ package consumergroup
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -104,16 +105,19 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 
 	// Validate configuration
 	if err = config.Validate(); err != nil {
+		log.Printf("error when invoking config.Validate(): %s\n", err.Error())
 		return
 	}
 
 	var kz *kazoo.Kazoo
 	if kz, err = kazoo.NewKazoo(zookeeper, config.Zookeeper); err != nil {
+		log.Printf("error when invoking kazoo.NewKazoo(): %s\n", err.Error())
 		return
 	}
 
 	brokers, err := kz.BrokerList()
 	if err != nil {
+		log.Printf("error when invoking kz.BrokerList(): %s\n", err.Error())
 		kz.Close()
 		return
 	}
@@ -123,6 +127,7 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 	if config.Offsets.ResetOffsets {
 		err = group.ResetOffsets()
 		if err != nil {
+			log.Printf("error when invoking group.ResetOffsets(): %s\n", err.Error())
 			kz.Close()
 			return
 		}
@@ -132,6 +137,7 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 
 	var consumer sarama.Consumer
 	if consumer, err = sarama.NewConsumer(brokers, config.Config); err != nil {
+		log.Printf("error when invoking sarama.NewConsumer(): %s\n", err.Error())
 		kz.Close()
 		return
 	}
@@ -151,6 +157,7 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 
 	// Register consumer group
 	if exists, err := cg.group.Exists(); err != nil {
+		log.Printf("error when invoking cg.group.Exists(): %s\n", err.Error())
 		cg.Logf("FAILED to check for existence of consumergroup: %s!\n", err)
 		_ = consumer.Close()
 		_ = kz.Close()
@@ -158,6 +165,7 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 	} else if !exists {
 		cg.Logf("Consumergroup `%s` does not yet exists, creating...\n", cg.group.Name)
 		if err := cg.group.Create(); err != nil {
+			log.Printf("error when invoking cg.group.Create(): %s\n", err.Error())
 			cg.Logf("FAILED to create consumergroup in Zookeeper: %s!\n", err)
 			_ = consumer.Close()
 			_ = kz.Close()
@@ -167,6 +175,7 @@ func JoinConsumerGroup(name string, topics []string, zookeeper []string, config 
 
 	// Register itself with zookeeper
 	if err := cg.instance.Register(topics); err != nil {
+		log.Printf("error when invoking cg.instance.Register(): %s\n", err.Error())
 		cg.Logf("FAILED to register consumer instance: %s!\n", err)
 		return nil, err
 	} else {
@@ -311,7 +320,22 @@ func (cg *ConsumerGroup) topicConsumer(topic string, messages chan<- *sarama.Con
 	cg.Logf("%s :: Started topic consumer\n", topic)
 
 	// Fetch a list of partition IDs
-	partitions, err := cg.kazoo.Topic(topic).Partitions()
+	retries := 10
+	wait := time.Duration(2)
+
+	var partitions kazoo.PartitionList
+	var err error
+	for try := 1; try <= retries; try++ {
+		log.Printf("attempt %d at invoking cg.kazoo.Topic(%s).Partitions()", try, topic)
+		partitions, err = cg.kazoo.Topic(topic).Partitions()
+		if err != nil {
+			log.Printf("error when invoking cg.kazoo.Topic(%s) at try %d: %s\n", topic, try, err.Error())
+			time.Sleep(time.Second * wait)
+		} else {
+			break
+		}
+	}
+
 	if err != nil {
 		cg.Logf("%s :: FAILED to get list of partitions: %s\n", topic, err)
 		cg.errors <- &sarama.ConsumerError{
@@ -319,7 +343,6 @@ func (cg *ConsumerGroup) topicConsumer(topic string, messages chan<- *sarama.Con
 			Partition: -1,
 			Err:       err,
 		}
-		return
 	}
 
 	partitionLeaders, err := retrievePartitionLeaders(partitions)
