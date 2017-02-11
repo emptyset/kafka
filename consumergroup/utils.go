@@ -7,7 +7,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/wvanbergen/kazoo-go"
+	"github.com/emptyset/kazoo-go"
 )
 
 func retrievePartitionLeaders(partitions kazoo.PartitionList) (partitionLeaders, error) {
